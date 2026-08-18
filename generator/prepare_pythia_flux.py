@@ -1,20 +1,30 @@
 #!/usr/bin/env python3
-"""Convert 2x2MCP-PythiaGen mcp_spectra rows into EDepSim HEPEVT input.
+"""Convert 2x2MCP-PythiaGen ``mcp_spectra`` rows into EDepSim HEPEVT input.
 
 The Pythia generator uses a beam-frame convention with +z from the NuMI target
-toward the detector.  This adapter:
+toward the detector.  The validated 2x2 EDepSim gun instead uses global -x as
+the incoming beam direction.  This adapter therefore uses the explicit,
+right-handed mapping
 
-  1. selects one MCP mass from a Pythia ROOT file;
-  2. optionally applies/recomputes the 2x2 geometric acceptance;
-  3. propagates each retained MCP back from the detector plane to a configurable
-     injection plane just upstream of the detector;
-  4. rotates the beam frame by the NuMI downward beam angle into the EDepSim
-     global frame;
-  5. writes EDepSim's built-in HEPEVT ``pbomb`` flavor plus CSV/JSON provenance.
+    Pythia +z_beam -> EDepSim -x_global
+    Pythia +y_beam -> EDepSim +y_global
+    Pythia +x_beam -> EDepSim +z_global
 
-No production normalization is applied here.  The input ROOT file remains the
-source of the production/acceptance normalization, while EDepSim handles detector
-transport for the retained particles.
+with the detector beam-plane reference point defaulting to (0, -0.2, 0.3) m.
+For an on-axis particle and the default 1.5 m injection distance this exactly
+reproduces the frozen validation gun position (1.5, -0.2, 0.3) m and direction
+(-1, 0, 0).
+
+The physical NuMI target-to-2x2 geometry (1.04 km baseline and approximately
+3 degree downward beam angle) is recorded as provenance.  The 3 degree civil-
+engineering/elevation angle is *not* applied as an additional rotation inside
+the EDepSim detector frame: the validated EDepSim geometry already has its own
+global coordinate convention, and applying another tilt without an explicit
+GDML survey transform would double-count/guess that relationship.
+
+No production normalization is applied here.  The input ROOT ``mcp_summary``
+remains authoritative for generated/accepted counts and production weights,
+while EDepSim handles detector transport for the retained particles.
 """
 
 from __future__ import annotations
@@ -23,10 +33,9 @@ import argparse
 import csv
 import json
 import math
-import os
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 try:
     import ROOT
@@ -43,6 +52,7 @@ DEFAULT_BASELINE_M = 1040.0
 DEFAULT_BEAM_ANGLE_DEG = 3.0
 DEFAULT_INJECTION_DISTANCE_M = 1.5
 DEFAULT_MASS_TOL_GEV = 1.0e-8
+DEFAULT_DETECTOR_CENTER_GLOBAL_M = (0.0, -0.2, 0.3)
 
 # Geometry used by 2x2MCP-PythiaGen for geometry_id=1.
 DEFAULT_X_RANGES_M = ((-0.65, -0.05), (0.05, 0.65))
@@ -56,16 +66,12 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("input_root", type=Path, help="2x2MCP-PythiaGen ROOT file")
     p.add_argument("output_prefix", type=Path, help="Prefix for .hepevt/.csv/.json/.mac")
     p.add_argument(
-        "--mass-gev",
-        type=float,
-        default=None,
+        "--mass-gev", type=float, default=None,
         help="MCP mass to select. If omitted, require exactly one mass in mcp_spectra.",
     )
     p.add_argument("--mass-tol-gev", type=float, default=DEFAULT_MASS_TOL_GEV)
     p.add_argument(
-        "--selection",
-        choices=("accepted", "recompute", "all"),
-        default="recompute",
+        "--selection", choices=("accepted", "recompute", "all"), default="recompute",
         help=(
             "accepted: trust passed_geometry/accepted from the ROOT file; "
             "recompute: recompute the documented 2x2 projection cut; "
@@ -73,41 +79,33 @@ def parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
-        "--max-events",
-        type=int,
-        default=None,
-        help="Maximum number of retained MCPs to write (after selection).",
+        "--max-events", type=int, default=None,
+        help="Maximum number of retained MCPs to write after selection.",
     )
     p.add_argument(
-        "--baseline-m",
-        type=float,
-        default=DEFAULT_BASELINE_M,
+        "--baseline-m", type=float, default=DEFAULT_BASELINE_M,
         help="Target-to-detector distance along the Pythia beam axis.",
     )
     p.add_argument(
-        "--beam-angle-deg",
-        type=float,
-        default=DEFAULT_BEAM_ANGLE_DEG,
-        help="Downward NuMI beam angle; positive means beam points toward -global-y.",
+        "--beam-angle-deg", type=float, default=DEFAULT_BEAM_ANGLE_DEG,
+        help=(
+            "Physical NuMI downward beam angle stored as provenance only; it is "
+            "not additionally rotated into the already-defined EDepSim frame."
+        ),
     )
     p.add_argument(
-        "--injection-distance-m",
-        type=float,
-        default=DEFAULT_INJECTION_DISTANCE_M,
-        help="Distance upstream of the detector-center beam plane for EDepSim injection.",
+        "--injection-distance-m", type=float, default=DEFAULT_INJECTION_DISTANCE_M,
+        help="Distance upstream of the detector beam plane for EDepSim injection.",
     )
-    p.add_argument("--detector-center-x-m", type=float, default=0.0)
-    p.add_argument("--detector-center-y-m", type=float, default=0.0)
-    p.add_argument("--detector-center-z-m", type=float, default=0.0)
+    p.add_argument("--detector-center-x-m", type=float, default=DEFAULT_DETECTOR_CENTER_GLOBAL_M[0])
+    p.add_argument("--detector-center-y-m", type=float, default=DEFAULT_DETECTOR_CENTER_GLOBAL_M[1])
+    p.add_argument("--detector-center-z-m", type=float, default=DEFAULT_DETECTOR_CENTER_GLOBAL_M[2])
     p.add_argument(
-        "--time-ns",
-        type=float,
-        default=0.0,
+        "--time-ns", type=float, default=0.0,
         help="Primary-vertex time written to HEPEVT for this first integration stage.",
     )
     p.add_argument(
-        "--allow-nonunit-spectra-prescale",
-        action="store_true",
+        "--allow-nonunit-spectra-prescale", action="store_true",
         help=(
             "Allow source files whose mcp_summary reports spectra_prescale != 1. "
             "This is unsafe if you intend to derive acceptance from mcp_spectra itself."
@@ -116,17 +114,15 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
-def rotate_beam_to_global(x: float, y: float, z: float, theta: float) -> Tuple[float, float, float]:
-    """Rotate about global +x so beam +z points downward by theta.
-
-    Local +z maps to (0, -sin(theta), cos(theta)).
-    """
-    c = math.cos(theta)
-    s = math.sin(theta)
-    return x, c * y - s * z, s * y + c * z
+def beam_to_edepsim(x_beam: float, y_beam: float, z_beam: float) -> Tuple[float, float, float]:
+    """Map Pythia beam-frame vector components into EDepSim global axes."""
+    return -z_beam, y_beam, x_beam
 
 
-def recompute_projection(px: float, py: float, pz: float, baseline_m: float) -> Tuple[bool, float, float]:
+def recompute_projection(
+    px: float, py: float, pz: float, baseline_m: float
+) -> Tuple[bool, float, float]:
+    """Reproduce the current 2x2MCP-PythiaGen geometry_id=1 projection."""
     if pz <= 0.0:
         return False, math.nan, math.nan
     x = (px / pz) * baseline_m
@@ -152,8 +148,7 @@ def matching_summary_rows(summary, mass_gev: float, tol: float) -> List[Dict[str
         "emitter_pdg", "emitter_type", "production_mode", "geometry_id",
         "n_events_generated", "n_mcp_total", "n_mcp_accepted",
         "acceptance_fraction", "acceptance_uncertainty_binomial",
-        "sigma_gen_mb", "sigma_err_mb", "weight_per_event_mb",
-        "spectra_prescale",
+        "sigma_gen_mb", "sigma_err_mb", "weight_per_event_mb", "spectra_prescale",
     ]
     out: List[Dict[str, object]] = []
     for row in summary:
@@ -167,6 +162,11 @@ def matching_summary_rows(summary, mass_gev: float, tol: float) -> List[Dict[str
                     value = value.item()
                 except AttributeError:
                     pass
+                if not isinstance(value, (str, int, float, bool)):
+                    try:
+                        value = float(value)
+                    except (TypeError, ValueError):
+                        value = str(value)
                 data[name] = value
         out.append(data)
     return out
@@ -179,6 +179,8 @@ def main() -> int:
         raise SystemExit("--baseline-m must be positive")
     if args.injection_distance_m <= 0.0:
         raise SystemExit("--injection-distance-m must be positive")
+    if args.max_events is not None and args.max_events <= 0:
+        raise SystemExit("--max-events must be positive when supplied")
 
     root_file = ROOT.TFile.Open(str(args.input_root), "READ")
     if not root_file or root_file.IsZombie():
@@ -215,8 +217,7 @@ def main() -> int:
     summary_rows = matching_summary_rows(summary, mass_gev, args.mass_tol_gev)
     prescales = {
         int(r["spectra_prescale"])
-        for r in summary_rows
-        if "spectra_prescale" in r
+        for r in summary_rows if "spectra_prescale" in r
     }
     if prescales and prescales != {1} and not args.allow_nonunit_spectra_prescale:
         raise SystemExit(
@@ -232,11 +233,8 @@ def main() -> int:
     json_path = output_prefix.with_suffix(".summary.json")
     macro_path = output_prefix.with_suffix(".mac")
 
-    theta = math.radians(args.beam_angle_deg)
     center = (
-        args.detector_center_x_m,
-        args.detector_center_y_m,
-        args.detector_center_z_m,
+        args.detector_center_x_m, args.detector_center_y_m, args.detector_center_z_m
     )
 
     rows_total_mass = 0
@@ -266,7 +264,9 @@ def main() -> int:
                 continue
             rows_total_mass += 1
 
-            source_accepted = bool(int(getattr(row, "passed_geometry", getattr(row, "accepted", 0))))
+            source_accepted = bool(
+                int(getattr(row, "passed_geometry", getattr(row, "accepted", 0)))
+            )
             if source_accepted:
                 rows_source_accepted += 1
 
@@ -280,8 +280,6 @@ def main() -> int:
             if recomputed_accepted:
                 rows_recomputed_accepted += 1
 
-            # Prefer the generator's recorded detector-plane projection when finite;
-            # it is exactly the quantity documented in 2x2MCP-PythiaGen.
             x_det = float(getattr(row, "x_at_detector_m", x_det_re))
             y_det = float(getattr(row, "y_at_detector_m", y_det_re))
             if not math.isfinite(x_det) or not math.isfinite(y_det):
@@ -291,23 +289,20 @@ def main() -> int:
                 continue
             if args.selection == "recompute" and not recomputed_accepted:
                 continue
-
             if pz_b <= 0.0:
-                # It cannot reach an upstream-to-downstream detector plane.
                 continue
 
+            # Move upstream from the Pythia detector plane along the same ray.
             d = args.injection_distance_m
             x_inj_b = x_det - (px_b / pz_b) * d
             y_inj_b = y_det - (py_b / pz_b) * d
             z_inj_b = -d
 
-            x_rel_g, y_rel_g, z_rel_g = rotate_beam_to_global(
-                x_inj_b, y_inj_b, z_inj_b, theta
-            )
+            x_rel_g, y_rel_g, z_rel_g = beam_to_edepsim(x_inj_b, y_inj_b, z_inj_b)
             x_g = center[0] + x_rel_g
             y_g = center[1] + y_rel_g
             z_g = center[2] + z_rel_g
-            px_g, py_g, pz_g = rotate_beam_to_global(px_b, py_b, pz_b, theta)
+            px_g, py_g, pz_g = beam_to_edepsim(px_b, py_b, pz_b)
 
             source_pdg = int(row.mcp_pdg)
             if source_pdg > 0:
@@ -317,21 +312,21 @@ def main() -> int:
             else:
                 pythia_sign_counts["other"] += 1
 
-            # Current EDepSim defines a single particle named mcp at +9000001.
-            # For detector response without magnetic bending, chi/chibar have the
-            # same |q|-dependent ionisation. Preserve the original sign in the CSV.
+            # Current EDepSim has one MCP species. Preserve source sign in the
+            # sidecar manifest and transport both signs with the configured |q|.
             edepsim_pdg = EDEPSIM_MCP_PDG
 
             event_id = rows_written
-            # HEPEVT header, five-token form: N x[cm] y[cm] z[cm] t[ns]
+            # Five-token HEPEVT header: N x[cm] y[cm] z[cm] t[ns].
             hepevt.write(
-                f"1 {100.0*x_g:.12g} {100.0*y_g:.12g} {100.0*z_g:.12g} {args.time_ns:.12g}\n"
+                f"1 {100.0*x_g:.12g} {100.0*y_g:.12g} "
+                f"{100.0*z_g:.12g} {args.time_ns:.12g}\n"
             )
-            # pbomb particle row:
-            # status pid mother1 mother2 daughter1 daughter2 px py pz E mass
+            # pbomb row: status pid m1 m2 d1 d2 px py pz E mass (GeV).
             hepevt.write(
                 f"1 {edepsim_pdg} 0 0 0 0 "
-                f"{px_g:.12g} {py_g:.12g} {pz_g:.12g} {E_source:.12g} {mass_gev:.12g}\n"
+                f"{px_g:.12g} {py_g:.12g} {pz_g:.12g} "
+                f"{E_source:.12g} {mass_gev:.12g}\n"
             )
 
             writer.writerow({
@@ -367,33 +362,44 @@ def main() -> int:
             if args.max_events is not None and rows_written >= args.max_events:
                 break
 
+    if rows_written == 0:
+        for path in (hepevt_path, csv_path):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        raise SystemExit(
+            "No MCP rows survived the requested mass/selection. No EDepSim input written."
+        )
+
     macro = f"""# Auto-generated by generator/prepare_pythia_flux.py
 # Source: {args.input_root}
 # Selected MCP mass: {mass_gev:.12g} GeV
-# Beam geometry: baseline={args.baseline_m:.12g} m, downward angle={args.beam_angle_deg:.12g} deg
+# Physical beamline provenance: baseline={args.baseline_m:.12g} m, downward angle={args.beam_angle_deg:.12g} deg
+# EDepSim mapping: +z_beam -> -x_global, +y_beam -> +y_global, +x_beam -> +z_global
+# Detector beam-plane reference: ({center[0]:.12g}, {center[1]:.12g}, {center[2]:.12g}) m
 
 /edep/phys/ionizationModel 0
 /edep/hitSeparation volTPCActive -1 mm
-
-# Construct the custom MCP before reading PDG 9000001 from HEPEVT.
 /edep/update
 
 /generator/kinematics/hepevt/input {hepevt_path}
 /generator/kinematics/hepevt/flavor pbomb
 /generator/kinematics/hepevt/verbose 0
 /generator/kinematics/set hepevt
-
-# HEPEVT supplies event-by-event vertices and times; do not override them.
 /generator/position/set free
 /generator/time/set free
 /generator/count/fixed/number 1
 /generator/count/set fixed
 /generator/add
 
-# Zero-hit MCPs remain part of detector-efficiency bookkeeping.
 /edep/db/set/requireEventsWithHits false
 """
     macro_path.write_text(macro)
+
+    nominal_pos_rel = beam_to_edepsim(0.0, 0.0, -args.injection_distance_m)
+    nominal_pos = tuple(center[i] + nominal_pos_rel[i] for i in range(3))
+    nominal_dir = beam_to_edepsim(0.0, 0.0, 1.0)
 
     summary_out = {
         "source_root": str(args.input_root),
@@ -401,10 +407,26 @@ def main() -> int:
         "selected_mass_GeV": mass_gev,
         "selection": args.selection,
         "mass_tolerance_GeV": args.mass_tol_gev,
-        "baseline_m": args.baseline_m,
-        "beam_angle_deg_downward": args.beam_angle_deg,
-        "detector_center_global_m": list(center),
-        "injection_distance_upstream_m": args.injection_distance_m,
+        "physical_beamline": {
+            "target_to_detector_baseline_m": args.baseline_m,
+            "downward_angle_deg": args.beam_angle_deg,
+            "angle_application": "provenance_only_not_additional_edepsim_rotation",
+        },
+        "edepsim_frame": {
+            "beam_axis_mapping": {
+                "+z_beam": "-x_global",
+                "+y_beam": "+y_global",
+                "+x_beam": "+z_global",
+            },
+            "detector_beam_plane_reference_m": list(center),
+            "injection_distance_upstream_m": args.injection_distance_m,
+            "nominal_on_axis_injection_m": list(nominal_pos),
+            "nominal_on_axis_direction": list(nominal_dir),
+            "frozen_gun_crosscheck_expected": {
+                "position_m": [1.5, -0.2, 0.3],
+                "direction": [-1.0, 0.0, 0.0],
+            },
+        },
         "rows_for_selected_mass_seen": rows_total_mass,
         "rows_marked_accepted_by_source": rows_source_accepted,
         "rows_accepted_by_recomputed_2x2_cut": rows_recomputed_accepted,
@@ -421,8 +443,9 @@ def main() -> int:
         "notes": [
             "Production normalization is not applied by this adapter.",
             "The source ROOT mcp_summary remains authoritative for generated/accepted counts.",
+            "The physical 3 degree NuMI elevation angle is recorded but not double-applied inside the EDepSim detector frame.",
             "Current EDepSim defines only +9000001; chi/chibar sign is preserved in the manifest but both are transported as the same MCP species in this first integration stage.",
-            "One retained MCP becomes one EDepSim event; source_event_index is preserved so physical pair grouping can be added later.",
+            "One retained MCP becomes one EDepSim event; source_event_index and mother_index are preserved so pair grouping can be added later.",
         ],
     }
     json_path.write_text(json.dumps(summary_out, indent=2, sort_keys=True) + "\n")
@@ -438,6 +461,10 @@ def main() -> int:
     print(f"Manifest: {csv_path}")
     print(f"Summary: {json_path}")
     print(f"Macro: {macro_path}")
+    print()
+    print("Nominal-axis cross-check:")
+    print(f"  injection position = {nominal_pos} m")
+    print(f"  direction          = {nominal_dir}")
     print()
     print("Run EDepSim with a mass/charge matching this sample, e.g.:")
     print(f"  export EDEPSIM_MCP_MASS_MEV={1000.0*mass_gev:.12g}")
