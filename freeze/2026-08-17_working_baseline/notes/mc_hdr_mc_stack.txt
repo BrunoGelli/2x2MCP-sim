@@ -1,0 +1,38 @@
+MCP convert2h5 / larnd-sim compatibility issue
+==============================================
+
+For non-GENIE / GPS-style EDepSim input, convert2h5 creates:
+
+    mc_hdr
+    mc_stack
+
+but both datasets have length zero.
+
+Modern larnd-sim interprets dataset existence as meaning MC-header
+information is present. It then attempts operations such as:
+
+    mc_hdr['t_event'] = vertices['t_event']
+
+which fails because the MCP sample has 100 vertices but zero mc_hdr rows.
+
+WORKING HOTFIX
+--------------
+
+Delete mc_hdr and mc_stack ONLY when they exist and have length zero.
+
+Example:
+
+import h5py
+
+with h5py.File(filename, "r+") as f:
+    for name in ("mc_hdr", "mc_stack"):
+        if name in f and len(f[name]) == 0:
+            del f[name]
+
+The cleaned file used as larnd-sim input is:
+
+    mcp_600MeV_100events_03e.LARNDINPUT.hdf5
+
+Long-term solution:
+convert2h5 should not create empty mc_hdr/mc_stack datasets for
+non-GENIE inputs.

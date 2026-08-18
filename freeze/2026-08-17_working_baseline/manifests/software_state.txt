@@ -1,0 +1,40 @@
+=== BASELINE DATE ===
+2026-08-17T19:56:37-07:00
+
+=== HOST ===
+login22
+
+=== EDEP-SIM ===
+feature/mcp-physics
+e489bba20fd83f820d6e446c26af05c0d372d077
+origin	https://github.com/BrunoGelli/edep-sim.git (fetch)
+origin	https://github.com/BrunoGelli/edep-sim.git (push)
+upstream	https://github.com/lbl-neutrino/edep-sim.git (fetch)
+upstream	https://github.com/lbl-neutrino/edep-sim.git (push)
+
+=== LARND-SIM ===
+develop
+3b6449466e1e8036413ad9c6750b04a68515aea3
+origin	https://github.com/DUNE/larnd-sim.git (fetch)
+origin	https://github.com/DUNE/larnd-sim.git (push)
+
+=== H5FLOW ===
+main
+1aaa36a0668f2a64f15703778c5c65168a24294f
+origin	https://github.com/larpix/h5flow.git (fetch)
+origin	https://github.com/larpix/h5flow.git (push)
+
+=== NDLAR_FLOW ===
+develop
+4705e95d20c3582e6421feb55a17a21c3bb1c24e
+origin	https://github.com/larpix/ndlar_flow.git (fetch)
+origin	https://github.com/larpix/ndlar_flow.git (push)
+
+=== SUBMODULE STATE ===
+ e489bba20fd83f820d6e446c26af05c0d372d077 software/edep-sim (mcp-e03-validation-2026-08-15-4-ge489bba)
+ 1aaa36a0668f2a64f15703778c5c65168a24294f software/flow/h5flow (heads/main)
+ 4705e95d20c3582e6421feb55a17a21c3bb1c24e software/flow/ndlar_flow (Pre-HitFinder-368-g4705e95)
+ 3b6449466e1e8036413ad9c6750b04a68515aea3 software/larnd-sim-current (heads/develop)
+
+=== BASIC SOFTWARE ===
+git version 2.51.0

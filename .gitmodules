@@ -1,0 +1,16 @@
+[submodule "software/edep-sim"]
+	path = software/edep-sim
+	url = https://github.com/BrunoGelli/edep-sim.git
+	branch = feature/mcp-physics
+[submodule "software/larnd-sim-current"]
+	path = software/larnd-sim-current
+	url = https://github.com/DUNE/larnd-sim.git
+	branch = develop
+[submodule "software/flow/h5flow"]
+	path = software/flow/h5flow
+	url = https://github.com/larpix/h5flow.git
+	branch = main
+[submodule "software/flow/ndlar_flow"]
+	path = software/flow/ndlar_flow
+	url = https://github.com/larpix/ndlar_flow.git
+	branch = develop

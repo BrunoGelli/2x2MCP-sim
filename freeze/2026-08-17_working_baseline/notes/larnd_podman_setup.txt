@@ -1,0 +1,37 @@
+Working NERSC larnd-sim container setup
+=======================================
+
+Launch:
+
+podman-hpc run --rm -it --gpu --cvmfs \
+    --env SCRATCH="$SCRATCH" \
+    -v "$SCRATCH:$SCRATCH" \
+    -v /dvs_ro/cfs:/dvs_ro/cfs \
+    -v /opt/nvidia/hpc_sdk/Linux_x86_64/23.9:/opt/cuda \
+    docker.io/mjkramer/sim2x2:ndlar011 \
+    /bin/bash
+
+Inside container:
+
+source /opt/environment
+
+export CUDA_HOME=/opt/cuda/cuda/12.2
+export PATH="$CUDA_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$CUDA_HOME/lib64:$LD_LIBRARY_PATH"
+
+python -m pip install 'numba-cuda[cu12]'
+
+python -m pip install --force-reinstall \
+    'git+https://github.com/larpix/larpix-control.git@release'
+
+cd "$SCRATCH/2x2_mcp/software/larnd-sim-current"
+
+SKIP_CUPY_INSTALL=1 python -m pip install -e .
+
+Known-good larnd-sim commit:
+
+3b6449466e1e8036413ad9c6750b04a68515aea3
+
+For MCP single-particle simulation use:
+
+--config 2x2_mpvmpr

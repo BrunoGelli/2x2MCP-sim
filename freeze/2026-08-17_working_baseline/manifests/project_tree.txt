@@ -1,0 +1,314 @@
+.
+├── configs
+│   └── ndlar_flow
+│       └── data
+│           ├── ndlar_flow
+│           └── proto_nd_flow
+├── custom_edep_control.root
+├── freeze
+│   └── 2026-08-17_working_baseline
+│       ├── manifests
+│       │   ├── ndlar_flow_local_status.txt
+│       │   ├── project_tree.txt
+│       │   ├── SHA256SUMS
+│       │   └── software_state.txt
+│       ├── notes
+│       │   ├── larnd_podman_setup.txt
+│       │   └── mc_hdr_mc_stack.txt
+│       ├── patches
+│       │   └── ndlar_flow_local_changes.patch
+│       └── README.md
+├── gun_tests
+│   ├── analyze_gun.py
+│   ├── charge_scan
+│   │   ├── mcp_charge_scan.csv
+│   │   ├── mcp_charge_scan.png
+│   │   ├── mcp_q0.01_600MeV_10000events.root
+│   │   ├── mcp_q0.03_600MeV_10000events.root
+│   │   ├── mcp_q0.05_600MeV_10000events.root
+│   │   ├── mcp_q0.09_600MeV_10000events.root
+│   │   ├── mcp_q0.10_600MeV_10000events.root
+│   │   ├── mcp_q0.11_600MeV_10000events.root
+│   │   ├── mcp_q0.2_600MeV_10000events.root
+│   │   ├── mcp_q0.3_600MeV_10000events.root
+│   │   ├── mcp_q0.5_600MeV_10000events.root
+│   │   └── mcp_q1.0_600MeV_10000events.root
+│   ├── mcp_600MeV_100events_03e.EDEPSIM.hdf5
+│   ├── mcp_600MeV_100events_03e.FLOW.hdf5
+│   ├── mcp_600MeV_100events_03e.LARNDINPUT.hdf5
+│   ├── mcp_600MeV_100events_03e.LARNDSIM.hdf5
+│   ├── mcp_600MeV_100events_03e.root
+│   ├── mcp_600MeV_100events.root
+│   ├── mcp_600MeV_1event.root
+│   ├── mcp_gun.mac
+│   ├── mcp_q03_event0.png
+│   ├── mcp_q1_event0.png
+│   ├── muon_600MeV_100events.root
+│   ├── muon_600MeV_1event.root
+│   └── muon_gun.mac
+├── README.md
+└── software
+    ├── edep-sim
+    │   ├── app
+    │   │   ├── CMakeLists.txt
+    │   │   └── edepSim.cc
+    │   ├── build
+    │   │   ├── app
+    │   │   ├── CMakeFiles
+    │   │   ├── display
+    │   │   ├── edep-build.sh
+    │   │   ├── io
+    │   │   ├── make-doc.sh
+    │   │   ├── Makefile
+    │   │   └── src
+    │   ├── ChangeLog
+    │   ├── CMakeLists.txt
+    │   ├── CONTRIBUTORS
+    │   ├── display
+    │   │   ├── CMakeLists.txt
+    │   │   ├── edepdisp_LinkDef.h
+    │   │   ├── eventDisplay.cxx
+    │   │   ├── README
+    │   │   ├── TEventChangeManager.cxx
+    │   │   ├── TEventChangeManager.hxx
+    │   │   ├── TEventDisplay.cxx
+    │   │   ├── TEventDisplay.hxx
+    │   │   ├── TEventManager.hxx
+    │   │   ├── TG4HitChangeHandler.cxx
+    │   │   ├── TG4HitChangeHandler.hxx
+    │   │   ├── TGUIManager.cxx
+    │   │   ├── TGUIManager.hxx
+    │   │   ├── TMatrixElement.cxx
+    │   │   ├── TMatrixElement.hxx
+    │   │   ├── TRecurseGeoManager.hxx
+    │   │   ├── TTrajectoryChangeHandler.cxx
+    │   │   ├── TTrajectoryChangeHandler.hxx
+    │   │   └── TVEventChangeHandler.hxx
+    │   ├── doc
+    │   │   └── edepsim-command.list
+    │   ├── Doxyfile.in
+    │   ├── inputs
+    │   │   ├── 2x2_DTG.mac
+    │   │   ├── double-particle-gun.mac
+    │   │   ├── electron-600.mac
+    │   │   ├── example.gdml
+    │   │   ├── genie-example.mac
+    │   │   ├── muon-10000.mac
+    │   │   ├── muon-100.mac
+    │   │   ├── muon-200.mac
+    │   │   ├── muon-burst-10000.mac
+    │   │   ├── muon-cone-10000.mac
+    │   │   ├── proton-300.mac
+    │   │   ├── raytrace.mac
+    │   │   ├── rooTracker-overlay.mac
+    │   │   ├── single-particle-gun.mac
+    │   │   └── triple-particle-gun.mac
+    │   ├── io
+    │   │   ├── CMakeLists.txt
+    │   │   ├── edepsim_io_LinkDef.h
+    │   │   ├── EDepSimUnits.h
+    │   │   ├── TG4Event.cxx
+    │   │   ├── TG4Event.h
+    │   │   ├── TG4HitSegment.cxx
+    │   │   ├── TG4HitSegment.h
+    │   │   ├── TG4PrimaryVertex.cxx
+    │   │   ├── TG4PrimaryVertex.h
+    │   │   ├── TG4Trajectory.cxx
+    │   │   └── TG4Trajectory.h
+    │   ├── LICENSE
+    │   ├── licenses
+    │   │   ├── LICENSE.geant4
+    │   │   └── LICENSE.nest
+    │   ├── PackageConfig.cmake.in
+    │   ├── README.md
+    │   ├── scripts
+    │   │   ├── edepsim-commands-html.sh
+    │   │   ├── edepsim-commands-text.sh
+    │   │   └── edepsim-export-geometry.sh
+    │   ├── setup.sh
+    │   ├── src
+    │   │   ├── captain
+    │   │   ├── CMakeLists.txt
+    │   │   ├── EDepSimArbElecField.cc
+    │   │   ├── EDepSimArbElecField.hh
+    │   │   ├── EDepSimArbEMField.cc
+    │   │   ├── EDepSimArbEMField.hh
+    │   │   ├── EDepSimArbMagField.cc
+    │   │   ├── EDepSimArbMagField.hh
+    │   │   ├── EDepSimBuilder.cc
+    │   │   ├── EDepSimBuilder.hh
+    │   │   ├── EDepSimComponentBuilder.hh
+    │   │   ├── EDepSimCreateRunManager.cc
+    │   │   ├── EDepSimCreateRunManager.hh
+    │   │   ├── edepsim-defaults-1.0.mac
+    │   │   ├── EDepSimDetectorMessenger.cc
+    │   │   ├── EDepSimDetectorMessenger.hh
+    │   │   ├── EDepSimDokeBirks.cc
+    │   │   ├── EDepSimDokeBirks.hh
+    │   │   ├── EDepSimEMFieldSetup.cc
+    │   │   ├── EDepSimEMFieldSetup.hh
+    │   │   ├── EDepSimException.hh
+    │   │   ├── EDepSimExtraPhysics.cc
+    │   │   ├── EDepSimExtraPhysics.hh
+    │   │   ├── EDepSimHitSegment.cc
+    │   │   ├── EDepSimHitSegment.hh
+    │   │   ├── EDepSimInterpolator.cc
+    │   │   ├── EDepSimInterpolator.hh
+    │   │   ├── EDepSimLog.hh
+    │   │   ├── EDepSimLogManager.cc
+    │   │   ├── EDepSimModuleBuilder.cc
+    │   │   ├── EDepSimModuleBuilder.hh
+    │   │   ├── EDepSimPersistencyManager.cc
+    │   │   ├── EDepSimPersistencyManager.hh
+    │   │   ├── EDepSimPersistencyMessenger.cc
+    │   │   ├── EDepSimPersistencyMessenger.hh
+    │   │   ├── EDepSimPhysicsList.cc
+    │   │   ├── EDepSimPhysicsList.hh
+    │   │   ├── EDepSimPhysicsListMessenger.cc
+    │   │   ├── EDepSimPhysicsListMessenger.hh
+    │   │   ├── EDepSimRootGeometryManager.cc
+    │   │   ├── EDepSimRootGeometryManager.hh
+    │   │   ├── EDepSimRootPersistencyManager.cc
+    │   │   ├── EDepSimRootPersistencyManager.hh
+    │   │   ├── EDepSimSDFactory.cc
+    │   │   ├── EDepSimSDFactory.hh
+    │   │   ├── EDepSimSegmentSD.cc
+    │   │   ├── EDepSimSegmentSD.hh
+    │   │   ├── EDepSimTrajectory.cc
+    │   │   ├── EDepSimTrajectory.hh
+    │   │   ├── EDepSimTrajectoryMap.cc
+    │   │   ├── EDepSimTrajectoryMap.hh
+    │   │   ├── EDepSimTrajectoryPoint.cc
+    │   │   ├── EDepSimTrajectoryPoint.hh
+    │   │   ├── EDepSimUniformField.cc
+    │   │   ├── EDepSimUniformField.hh
+    │   │   ├── EDepSimUserDetectorConstruction.cc
+    │   │   ├── EDepSimUserDetectorConstruction.hh
+    │   │   ├── EDepSimUserEventAction.cc
+    │   │   ├── EDepSimUserEventAction.hh
+    │   │   ├── EDepSimUserEventInformation.cc
+    │   │   ├── EDepSimUserEventInformation.hh
+    │   │   ├── EDepSimUserPrimaryGeneratorAction.cc
+    │   │   ├── EDepSimUserPrimaryGeneratorAction.hh
+    │   │   ├── EDepSimUserPrimaryGeneratorMessenger.cc
+    │   │   ├── EDepSimUserPrimaryGeneratorMessenger.hh
+    │   │   ├── EDepSimUserRunAction.cc
+    │   │   ├── EDepSimUserRunAction.hh
+    │   │   ├── EDepSimUserRunActionMessenger.cc
+    │   │   ├── EDepSimUserRunActionMessenger.hh
+    │   │   ├── EDepSimUserStackingAction.cc
+    │   │   ├── EDepSimUserStackingAction.hh
+    │   │   ├── EDepSimUserTrackingAction.cc
+    │   │   ├── EDepSimUserTrackingAction.hh
+    │   │   ├── EDepSimVertexInfo.cc
+    │   │   ├── EDepSimVertexInfo.hh
+    │   │   ├── EDepSimVolumeId.cc
+    │   │   ├── EDepSimVolumeId.hh
+    │   │   ├── kinem
+    │   │   ├── lists
+    │   │   ├── makeColors.C
+    │   │   ├── NESTVersion098
+    │   │   └── rootColorToG4ColorMap.hxx
+    │   ├── test
+    │   │   ├── ggdExample
+    │   │   ├── ggdExample.cfg
+    │   │   ├── README
+    │   │   ├── testEvents.sh
+    │   │   └── testGGD.sh
+    │   ├── validate
+    │   │   ├── edep-sim-validate.sh
+    │   │   └── fast-tests
+    │   └── validation
+    │       └── mcp
+    ├── flow
+    │   ├── h5flow
+    │   │   ├── docs
+    │   │   ├── environment-nompi.yml
+    │   │   ├── environment.yml
+    │   │   ├── examples
+    │   │   ├── h5flow
+    │   │   ├── h5flow.egg-info
+    │   │   ├── LICENSE
+    │   │   ├── README.rst
+    │   │   ├── scripts
+    │   │   ├── setup.py
+    │   │   ├── tests
+    │   │   └── VERSION
+    │   └── ndlar_flow
+    │       ├── data
+    │       ├── docs
+    │       ├── event_display
+    │       ├── pyproject.toml
+    │       ├── README.rst
+    │       ├── scripts
+    │       ├── src
+    │       ├── test
+    │       ├── VERSION
+    │       └── yamls
+    └── larnd-sim-current
+        ├── cli
+        │   ├── compare_files.py
+        │   ├── diff_files.py
+        │   ├── dumpTree.py
+        │   ├── lar_runner.py
+        │   ├── list_config_keys.py
+        │   ├── runner.yaml
+        │   ├── simulate_pixels.py
+        │   └── sort_packets.py
+        ├── CONTRIBUTING.md
+        ├── docs
+        │   ├── logo.png
+        │   ├── make.bat
+        │   ├── Makefile
+        │   ├── requirements.txt
+        │   └── source
+        ├── examples
+        │   ├── 2x2_light_tutorial_2.ipynb
+        │   ├── create_pedestals_file_FSD.ipynb
+        │   ├── create_pedestals_file.ipynb
+        │   ├── far_field
+        │   ├── gain_file_example.ipynb
+        │   ├── MapPixelIDToUniqueID_2x2.ipynb
+        │   ├── MapPixelIDToUniqueID_FSD.ipynb
+        │   ├── Thesholds_FSD.ipynb
+        │   └── Thesholds.ipynb
+        ├── larndsim
+        │   ├── active_volume.py
+        │   ├── bin
+        │   ├── config
+        │   ├── consts
+        │   ├── detector_properties
+        │   ├── detsim.py
+        │   ├── drifting.py
+        │   ├── far_field
+        │   ├── fee.py
+        │   ├── __init__.py
+        │   ├── lightLUT.py
+        │   ├── light_sim.py
+        │   ├── pixel_layouts
+        │   ├── pixels_from_track.py
+        │   ├── quenching.py
+        │   ├── simulation_properties
+        │   ├── util
+        │   └── _version.py
+        ├── larndsim.egg-info
+        │   ├── dependency_links.txt
+        │   ├── PKG-INFO
+        │   ├── requires.txt
+        │   ├── scm_file_list.json
+        │   ├── scm_version.json
+        │   ├── SOURCES.txt
+        │   └── top_level.txt
+        ├── LICENSE
+        ├── pyproject.toml
+        ├── README.md
+        ├── setup.py
+        └── tests
+            ├── __init__.py
+            ├── testCudaDict.py
+            ├── testDrifting.py
+            ├── testQuenching.py
+            ├── testTrackCharge.py
+            └── testTracksCurrent.py
+
+71 directories, 240 files

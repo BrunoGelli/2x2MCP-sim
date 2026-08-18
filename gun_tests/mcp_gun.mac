@@ -1,0 +1,44 @@
+# ============================================================
+# MCP particle-gun validation
+# mass = muon mass
+# charge = +1 e
+# ============================================================
+
+# Match the production 2x2 ionization configuration
+/edep/phys/ionizationModel 0
+
+# Keep hit segments associated with individual trajectories.
+/edep/hitSeparation volTPCActive -1 mm
+
+# IMPORTANT:
+# MCPPhysics::ConstructParticle() is called during initialization.
+# Therefore initialize before asking GPS to select "mcp".
+/edep/update
+
+# Be explicit about the EDepSim generator configuration.
+/generator/kinematics/set gps
+/generator/position/set free
+/generator/time/set fixed
+/generator/count/fixed/number 1
+/generator/count/set fixed
+
+# ------------------------------------------------------------
+# General Particle Source
+# ------------------------------------------------------------
+
+/gps/verbose 0
+
+/gps/particle mcp
+
+# Fixed kinetic energy.
+/gps/energy 600 MeV
+
+# Start from the same useful 2x2 location used by the DTG gun.
+/gps/pos/type Point
+/gps/pos/centre 1.5 -0.2 0.3 m
+
+# Fixed direction: toward negative X.
+/gps/direction -1 0 0
+
+# Preserve zero-hit events; they are part of the physics.
+/edep/db/set/requireEventsWithHits false
