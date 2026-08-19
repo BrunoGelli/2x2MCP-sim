@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Small local smoke test for the realistic MCP flux tools.
 
-This does not require PyROOT.  It:
+This does not require PyROOT. It:
   1. byte-compiles the shared modules/entry points;
-  2. constructs a tiny synthetic accepted-stage flux model;
-  3. samples 25 events through the real accepted-stage guards/sampler;
-  4. checks the expected HEPEVT/manifest/summary/macro products.
+  2. constructs a tiny synthetic empirical-v3 accepted-stage flux model;
+  3. samples 25 events through the real sampler;
+  4. verifies the original two-module conditioning gap stays empty;
+  5. checks the expected HEPEVT/manifest/summary/macro products.
 
 Run from the repository root with:
 
@@ -14,6 +15,7 @@ Run from the repository root with:
 
 from __future__ import annotations
 
+import csv
 import json
 import py_compile
 import tempfile
@@ -24,11 +26,28 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 
 
+def midpoint_bounds(values, groups, hard):
+    values = np.asarray(values, float)
+    lo = values.copy(); hi = values.copy()
+    for g in np.unique(groups):
+        idx = np.flatnonzero(groups == g)
+        order = idx[np.argsort(values[idx])]
+        v = values[order]
+        if len(v) > 1:
+            mids = 0.5 * (v[:-1] + v[1:])
+            lo[order[1:]] = mids
+            hi[order[:-1]] = mids
+        hlo, hhi = hard[int(g)]
+        lo[order] = np.maximum(lo[order], hlo)
+        hi[order] = np.minimum(hi[order], hhi)
+    return lo, hi
+
+
 def main() -> int:
     for name in (
         "flux_model_core.py",
+        "flux_model_empirical_v3.py",
         "flux_geometry.py",
-        "flux_sampling_constraints.py",
         "build_pythia_flux_model.py",
         "sample_pythia_flux.py",
         "plot_flux_vs_mass.py",
@@ -37,25 +56,24 @@ def main() -> int:
         py_compile.compile(str(HERE / name), doraise=True)
     print("Python byte-compilation: OK")
 
-    import flux_model_core as core
-    from flux_geometry import acceptance_mask_global
-    from flux_sampling_constraints import make_conditioned_draw
-
-    core.draw_model = make_conditioned_draw(core.draw_model)
-    core.acceptance_mask = acceptance_mask_global
+    import flux_model_empirical_v3 as v3
 
     with tempfile.TemporaryDirectory(prefix="mcp_flux_smoke_") as td:
         root = Path(td)
         model = root / "synthetic_accepted_model.npz"
         out_prefix = root / "sample"
 
-        # Compact forward component entirely around the two Pythia x windows.
-        # theta_x avoids the central x gap at the 1040 m projection plane.
-        hist = np.ones((3, 4, 3), dtype=float)
-        hist /= hist.sum()
+        E = np.array([0.10, 0.20, 0.50, 1.0, 2.0, 5.0])
+        loge = np.log10(E)
+        groups = np.array([-1, -1, -1, 1, 1, 1], dtype=np.int8)
+        x = np.array([-0.64, -0.40, -0.051, 0.051, 0.30, 0.64])
+        y = np.array([-0.4, 0.0, 0.4, -0.4, 0.0, 0.4])
+        log_lo, log_hi = midpoint_bounds(loge, groups, {-1: (loge.min(), loge.max()), 1: (loge.min(), loge.max())})
+        x_lo, x_hi = midpoint_bounds(x, groups, {-1: (-0.65, -0.05), 1: (0.05, 0.65)})
+        y_lo, y_hi = midpoint_bounds(y, groups, {-1: (-0.70, 0.70), 1: (-0.70, 0.70)})
         metadata = {
-            "schema_version": 2,
-            "model_type": "weighted_histogram_logE_thetaX_thetaY_v2",
+            "schema_version": 3,
+            "model_type": "weighted_empirical_donor_local_jitter_v3",
             "flux_stage": "accepted",
             "selected_mass_GeV": 0.020458,
             "total_stage_flux_per_pot_epsilon2": 1.0e-5,
@@ -78,14 +96,23 @@ def main() -> int:
             component_pdg=np.array([111], dtype=np.int32),
             component_flux=np.array([1.0e-5]),
             component_fraction=np.array([1.0]),
-            c000_hist=hist,
-            c000_logE_edges=np.array([-0.5, 0.0, 0.5, 1.0]),
-            c000_theta_x_edges=np.array([-5e-4, -2e-4, -6e-5, 2e-4, 5e-4]),
-            c000_theta_y_edges=np.array([-4e-4, -1e-4, 1e-4, 4e-4]),
+            c000_donor_logE=loge,
+            c000_donor_theta_x=np.arctan2(x, 1040.0),
+            c000_donor_theta_y=np.arctan2(y, 1040.0),
+            c000_donor_xdet=x,
+            c000_donor_ydet=y,
+            c000_donor_prob=np.ones(len(E)) / len(E),
+            c000_donor_side=groups,
+            c000_logE_lo=log_lo,
+            c000_logE_hi=log_hi,
+            c000_xdet_lo=x_lo,
+            c000_xdet_hi=x_hi,
+            c000_ydet_lo=y_lo,
+            c000_ydet_hi=y_hi,
         )
 
-        rc = core.sampler_main([
-            str(model), str(out_prefix), "--n-events", "25", "--seed", "17"
+        rc = v3.sampler_main([
+            str(model), str(out_prefix), "--n-events", "25", "--seed", "17", "--jitter-scale", "1.0"
         ])
         if rc != 0:
             raise RuntimeError(f"sampler_main returned {rc}")
@@ -101,13 +128,22 @@ def main() -> int:
         if missing:
             raise RuntimeError("Missing smoke-test outputs: " + ", ".join(missing))
 
+        with out_prefix.with_suffix(".manifest.csv").open() as handle:
+            rows = list(csv.DictReader(handle))
+        xs = np.array([float(r["x_pythia_detector_m"]) for r in rows])
+        if np.any(np.abs(xs) < 0.05):
+            raise RuntimeError("Empirical accepted sampler filled the central module gap")
+
         summary = json.loads(out_prefix.with_suffix(".summary.json").read_text())
         if summary["events_written"] != 25:
             raise RuntimeError("Expected 25 written events")
         if summary["model_flux_stage"] != "accepted":
             raise RuntimeError("Synthetic model stage was not preserved")
+        if summary["schema_version"] != 3:
+            raise RuntimeError("Expected sampler schema v3")
 
-    print("Synthetic accepted-stage sampler: OK")
+    print("Synthetic empirical-v3 accepted-stage sampler: OK")
+    print("Central module gap preservation: OK")
     print("Flux-tool smoke test: PASS")
     return 0
 
