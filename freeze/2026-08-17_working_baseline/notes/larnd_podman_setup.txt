@@ -1,37 +1,120 @@
 Working NERSC larnd-sim container setup
 =======================================
 
-Launch:
+Preferred launch
+----------------
 
-podman-hpc run --rm -it --gpu --cvmfs \
-    --env SCRATCH="$SCRATCH" \
-    -v "$SCRATCH:$SCRATCH" \
-    -v /dvs_ro/cfs:/dvs_ro/cfs \
-    -v /opt/nvidia/hpc_sdk/Linux_x86_64/23.9:/opt/cuda \
-    docker.io/mjkramer/sim2x2:ndlar011 \
-    /bin/bash
+From a Perlmutter GPU node, use the tracked launcher:
 
-Inside container:
+    cd "$SCRATCH/2x2_mcp"
+    ./scripts/launch_larnd_container.sh
 
-source /opt/environment
+The launcher starts the disposable Podman container and automatically sources:
 
-export CUDA_HOME=/opt/cuda/cuda/12.2
-export PATH="$CUDA_HOME/bin:$PATH"
-export LD_LIBRARY_PATH="$CUDA_HOME/lib64:$LD_LIBRARY_PATH"
+    scripts/setup_larnd_container.sh
 
-python -m pip install 'numba-cuda[cu12]'
+The setup script now validates the actual GPU runtime before it prints
+"larnd-sim environment ready".
 
-python -m pip install --force-reinstall \
-    'git+https://github.com/larpix/larpix-control.git@release'
+Manual launch equivalent
+------------------------
 
-cd "$SCRATCH/2x2_mcp/software/larnd-sim-current"
+    podman-hpc run --rm -it --gpu --cvmfs \
+        --env SCRATCH="$SCRATCH" \
+        --env MCP2X2_ROOT="$SCRATCH/2x2_mcp" \
+        -v "$SCRATCH:$SCRATCH" \
+        -v /dvs_ro/cfs:/dvs_ro/cfs \
+        -v /opt/nvidia/hpc_sdk/Linux_x86_64/23.9:/opt/cuda \
+        docker.io/mjkramer/sim2x2:ndlar011 \
+        /bin/bash
 
-SKIP_CUPY_INSTALL=1 python -m pip install -e .
+Known-good manual overlay
+-------------------------
+
+Inside the clean container:
+
+    source /opt/environment
+
+    export CUDA_HOME=/opt/cuda/cuda/12.2
+    export PATH="$CUDA_HOME/bin:$PATH"
+    export LD_LIBRARY_PATH="/opt/cuda/math_libs/12.2/targets/x86_64-linux/lib:$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
+
+    python -m pip install --upgrade 'numba-cuda[cu12]'
+
+Find the pip-provided nvJitLink library and prepend it to LD_LIBRARY_PATH:
+
+    NVJITLINK_DIR="$(
+        find /opt/venv \
+            -type f \
+            -name 'libnvJitLink.so.12' \
+            -printf '%h\n' \
+            -quit 2>/dev/null
+    )"
+
+    export LD_LIBRARY_PATH="${NVJITLINK_DIR}:${LD_LIBRARY_PATH}"
+
+Install only the pinned LArPix code.  --no-deps is CRITICAL here:
+
+    python -m pip install \
+        --upgrade \
+        --force-reinstall \
+        --no-deps \
+        'git+https://github.com/larpix/larpix-control.git@5a69050422e82356c8faf9ad0ea3168c322d63e8'
+
+Then install the persistent larnd-sim checkout:
+
+    cd "$SCRATCH/2x2_mcp/software/larnd-sim-current"
+    SKIP_CUPY_INSTALL=1 python -m pip install -e .
 
 Known-good larnd-sim commit:
 
-3b6449466e1e8036413ad9c6750b04a68515aea3
+    3b6449466e1e8036413ad9c6750b04a68515aea3
 
-For MCP single-particle simulation use:
+Validate the container
+----------------------
 
---config 2x2_mpvmpr
+Run:
+
+    bash "$SCRATCH/2x2_mcp/scripts/validate_larnd_container.sh"
+
+Do not proceed until it prints:
+
+    CONTAINER VALIDATION: PASS
+
+The validator exercises CuPy GPU execution, Numba CUDA JIT execution,
+LArPix Packet_v2/Packet_v3 imports, the larnd-sim commit, pip consistency,
+and the simulate_pixels.py CLI.
+
+MCP configuration
+-----------------
+
+For independent MCP/single-particle events use:
+
+    --config 2x2_mpvmpr
+
+Important dependency rule
+-------------------------
+
+Do NOT reinstall the pinned larpix-control package without --no-deps.
+
+A force reinstall with dependency resolution upgraded NumPy 1.26.2 to NumPy
+2.4.6, which broke CuPy 12.2.0 with:
+
+    AttributeError: `np.float_` was removed in the NumPy 2.0 release
+
+Trying to repair only NumPy inside the already-mutated /opt/venv then exposed
+an llvmlite shared-library mismatch.  Since the container is launched with
+--rm, the correct recovery is to fix the persistent setup script, exit the
+contaminated container, and relaunch from the clean base image.
+
+Full incident/postmortem:
+
+    freeze/2026-08-17_working_baseline/notes/larnd_container_dependency_recovery.md
+
+Historical manifest caveat
+--------------------------
+
+The existing larnd_container_pip_freeze.txt contains a post-install mutated
+NumPy 2.4.6 state and must not be treated as the canonical version lock for the
+working CuPy 12.2 environment.  New runtime freezes are written only after the
+GPU validator succeeds.
