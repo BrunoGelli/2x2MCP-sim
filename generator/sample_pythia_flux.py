@@ -3,10 +3,13 @@
 
 import flux_model_core as core
 from flux_geometry import acceptance_mask_global
+from flux_sampling_constraints import make_conditioned_draw
 
-# Keep Pythia acceptance as training-stage provenance, but make the independent
-# post-rotation check use the detector/global face.  ``sampler_main`` resolves
-# this helper dynamically from the shared core module.
+# Accepted-stage sampling is constrained to remain inside the original Pythia
+# conditioning window, preventing histogram interpolation from inventing
+# out-of-domain accepted points.  The independent post-rotation detector/global
+# face remains a diagnostic only.
+core.draw_model = make_conditioned_draw(core.draw_model)
 core.acceptance_mask = acceptance_mask_global
 
 
