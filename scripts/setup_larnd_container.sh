@@ -13,6 +13,7 @@ set -e
 PROJECT_DIR="${MCP2X2_ROOT:-${SCRATCH}/2x2_mcp}"
 LARND_DIR="${PROJECT_DIR}/software/larnd-sim-current"
 FREEZE_DIR="${PROJECT_DIR}/freeze/2026-08-17_working_baseline"
+VALIDATOR="${PROJECT_DIR}/scripts/validate_larnd_container.sh"
 
 EXPECTED_LARND_COMMIT="3b6449466e1e8036413ad9c6750b04a68515aea3"
 LARPIX_CONTROL_COMMIT="5a69050422e82356c8faf9ad0ea3168c322d63e8"
@@ -39,11 +40,16 @@ export LD_LIBRARY_PATH="/opt/cuda/math_libs/12.2/targets/x86_64-linux/lib:${CUDA
 # ----------------------------------------------------------------------
 
 echo
-echo "[1/4] Installing numba-cuda..."
-python -m pip install 'numba-cuda[cu12]'
+echo "[1/5] Installing/updating numba-cuda..."
 
-# numba-cuda installs NVIDIA runtime libraries into the Python
-# environment. Make sure libnvJitLink.so.12 can actually be found.
+# This is the same overlay used by the successful hand-tested recovery.
+# Do not replace this with a CUDA/Numba source rebuild. The base image remains
+# the environment anchor; numba-cuda supplies the modern Python CUDA layer.
+python -m pip install --upgrade 'numba-cuda[cu12]'
+
+# numba-cuda installs NVIDIA runtime libraries into the Python environment.
+# The pip-provided nvJitLink must precede the mounted CUDA 12.2 copy because
+# the modern Python CUDA stack can require symbols from the newer library.
 NVJITLINK_DIR="$(
     find /opt/venv \
         -type f \
@@ -65,9 +71,18 @@ fi
 # ----------------------------------------------------------------------
 
 echo
-echo "[2/4] Installing pinned larpix-control..."
+echo "[2/5] Installing pinned larpix-control without touching dependencies..."
 
-python -m pip install --force-reinstall \
+# CRITICAL: --no-deps is intentional.
+#
+# A force reinstall without --no-deps caused pip to upgrade the base image's
+# NumPy 1.26.2 to NumPy 2.x and to reinstall Numba/llvmlite. That broke the
+# already-repaired CuPy/Numba CUDA environment. We only need the pinned LArPix
+# code here; its runtime dependencies are supplied by the container/steps above.
+python -m pip install \
+    --upgrade \
+    --force-reinstall \
+    --no-deps \
     "git+https://github.com/larpix/larpix-control.git@${LARPIX_CONTROL_COMMIT}"
 
 # ----------------------------------------------------------------------
@@ -75,10 +90,12 @@ python -m pip install --force-reinstall \
 # ----------------------------------------------------------------------
 
 echo
-echo "[3/4] Checking larnd-sim checkout..."
+echo "[3/5] Checking larnd-sim checkout..."
 
-if [[ ! -d "${LARND_DIR}/.git" ]]; then
-    echo "ERROR: larnd-sim checkout not found:"
+# A submodule's .git entry may be a file rather than a directory, so ask Git
+# whether this is a valid work tree instead of testing -d "$LARND_DIR/.git".
+if ! git -C "${LARND_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "ERROR: larnd-sim checkout not found or invalid:"
     echo "  ${LARND_DIR}"
     return 1
 fi
@@ -97,14 +114,29 @@ if [[ "${ACTUAL_LARND_COMMIT}" != "${EXPECTED_LARND_COMMIT}" ]]; then
 fi
 
 echo
-echo "[4/4] Installing larnd-sim editable checkout..."
+echo "[4/5] Installing larnd-sim editable checkout..."
 
 cd "${LARND_DIR}"
 
 SKIP_CUPY_INSTALL=1 python -m pip install -e .
 
 # ----------------------------------------------------------------------
-# Record environment
+# Validate the actual GPU runtime before declaring success
+# ----------------------------------------------------------------------
+
+echo
+echo "[5/5] Validating larnd-sim GPU environment..."
+
+if [[ ! -f "${VALIDATOR}" ]]; then
+    echo "ERROR: container validator not found:"
+    echo "  ${VALIDATOR}"
+    return 1
+fi
+
+bash "${VALIDATOR}"
+
+# ----------------------------------------------------------------------
+# Record environment only after validation succeeds
 # ----------------------------------------------------------------------
 
 mkdir -p "${FREEZE_DIR}/manifests"
@@ -124,7 +156,7 @@ else
 
     echo
     echo "Baseline pip manifest already exists."
-    echo "Current environment written to:"
+    echo "Current validated environment written to:"
     echo "  ${RUNTIME_FREEZE}"
 fi
 
