@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """Deprecated compatibility entry point.
 
-The first prototype of this file replayed individual Pythia ``mcp_spectra``
-rows directly into EDepSim and used an incorrect x/z coordinate mapping inferred
-from the arbitrary frozen validation gun.
+The first prototype replayed individual Pythia rows directly into EDepSim and
+used an incorrect x/z coordinate mapping inferred from the arbitrary frozen
+validation gun.
 
-The production design now uses two explicit stages instead:
+The supported workflow now has two explicit programs:
 
   1. ``build_pythia_flux_model.py`` builds a physically normalized,
-     multi-emitter, non-parametric source-flux model from Pythia output.
-  2. ``sample_pythia_flux.py`` samples as many MCPs as needed, rotates the
-     Pythia beam frame into the 2x2 global frame, applies explicit
-     ``straight_line_v0`` beamline transport and detector acceptance, then
-     writes EDepSim HEPEVT input.
+     multi-emitter, non-parametric flux model.  It supports both the current
+     high-statistics ``accepted`` stage and the future pre-acceptance ``source``
+     stage.
+  2. ``sample_pythia_flux.py`` samples as many MCPs as needed, applies the
+     Pythia-beam -> 2x2 coordinate rotation, records explicit
+     ``straight_line_v0`` beamline assumptions, and writes EDepSim HEPEVT input.
 
-This file is intentionally kept so old notes/commands fail loudly instead of
+This file is intentionally retained so old commands fail loudly instead of
 silently using the obsolete coordinate convention.
 """
 
@@ -28,8 +29,16 @@ Use:
   generator/build_pythia_flux_model.py
   generator/sample_pythia_flux.py
 
-See generator/README.md for the current workflow, normalization convention,
-coordinate transform, Level-0 beamline transport assumptions, and provenance.
+Current detector studies should normally build with:
+  --flux-stage accepted
+
+Future beamline-transport studies can use:
+  --flux-stage source
+
+See:
+  generator/FLUX_MODEL_WORKFLOW.md
+for the current normalization, coordinate, plotting, provenance, acceptance,
+and straight_line_v0 transport conventions.
 """.strip()
 
 print(MESSAGE, file=sys.stderr)
