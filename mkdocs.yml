@@ -1,0 +1,113 @@
+site_name: MCP 2×2 Simulation Handbook
+site_description: Reproducible Pythia-to-EDepSim-to-larnd-sim-to-ndlar_flow instructions for the DUNE ND-LAr 2×2 MCP study
+site_author: Bruno P. Gelli
+repo_name: BrunoGelli/2x2MCP-sim
+repo_url: https://github.com/BrunoGelli/2x2MCP-sim
+edit_uri: edit/feature/pythia-spectrum-input/docs/
+docs_dir: docs
+site_dir: site
+strict: true
+
+nav:
+  - Home: index.md
+  - Start Here:
+      - Current Status: status.md
+      - Quick Start: quick-start.md
+      - Git and Repository Workflow: git-workflow.md
+  - Concepts:
+      - Pipeline Architecture: architecture.md
+      - MCP Physics Model: physics-model.md
+      - Pythia Flux Model: pythia-flux.md
+  - Pipeline Manual:
+      - 1. Build and Sample the Flux: run-generator.md
+      - 2. Run and Validate EDepSim: run-edepsim.md
+      - 3. Convert ROOT to HDF5: run-convert2h5.md
+      - 4. Run larnd-sim: run-larnd-sim.md
+      - 5. Run charge-only Flow: run-flow.md
+  - Validation and Operations:
+      - Worked 100-event Reference: reference-sample.md
+      - Validation Strategy: validation.md
+      - Troubleshooting: troubleshooting.md
+      - Provenance and Freezing: provenance.md
+      - Limitations and Roadmap: limitations.md
+  - Reference:
+      - Repository Layout: repository-layout.md
+      - Glossary: glossary.md
+      - Maintaining This Handbook: documentation.md
+
+exclude_docs: |
+  requirements.txt
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.select
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra:
+  status:
+    new: Recently added
+    deprecated: Deprecated
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/BrunoGelli/2x2MCP-sim
+
+copyright: Maintained for the DUNE ND-LAr 2×2 MCP simulation effort.
