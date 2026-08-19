@@ -4,8 +4,8 @@
 This does not require PyROOT.  It:
   1. byte-compiles the shared modules/entry points;
   2. constructs a tiny synthetic accepted-stage flux model;
-  3. samples 25 events through the real sampler;
-  4. checks that the expected HEPEVT/manifest/summary/macro products exist.
+  3. samples 25 events through the real accepted-stage guards/sampler;
+  4. checks the expected HEPEVT/manifest/summary/macro products.
 
 Run from the repository root with:
 
@@ -28,16 +28,20 @@ def main() -> int:
     for name in (
         "flux_model_core.py",
         "flux_geometry.py",
+        "flux_sampling_constraints.py",
         "build_pythia_flux_model.py",
         "sample_pythia_flux.py",
+        "plot_flux_vs_mass.py",
         "prepare_pythia_flux.py",
     ):
         py_compile.compile(str(HERE / name), doraise=True)
     print("Python byte-compilation: OK")
 
-    # Import only after the compile check.
     import flux_model_core as core
     from flux_geometry import acceptance_mask_global
+    from flux_sampling_constraints import make_conditioned_draw
+
+    core.draw_model = make_conditioned_draw(core.draw_model)
     core.acceptance_mask = acceptance_mask_global
 
     with tempfile.TemporaryDirectory(prefix="mcp_flux_smoke_") as td:
@@ -45,8 +49,9 @@ def main() -> int:
         model = root / "synthetic_accepted_model.npz"
         out_prefix = root / "sample"
 
-        # A compact forward component around the NuMI axis.
-        hist = np.ones((3, 3, 3), dtype=float)
+        # Compact forward component entirely around the two Pythia x windows.
+        # theta_x avoids the central x gap at the 1040 m projection plane.
+        hist = np.ones((3, 4, 3), dtype=float)
         hist /= hist.sum()
         metadata = {
             "schema_version": 2,
@@ -75,7 +80,7 @@ def main() -> int:
             component_fraction=np.array([1.0]),
             c000_hist=hist,
             c000_logE_edges=np.array([-0.5, 0.0, 0.5, 1.0]),
-            c000_theta_x_edges=np.array([-4e-4, -1e-4, 1e-4, 4e-4]),
+            c000_theta_x_edges=np.array([-5e-4, -2e-4, -6e-5, 2e-4, 5e-4]),
             c000_theta_y_edges=np.array([-4e-4, -1e-4, 1e-4, 4e-4]),
         )
 
