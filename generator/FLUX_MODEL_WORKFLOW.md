@@ -3,10 +3,13 @@
 This document is the current, authoritative guide to the realistic MCP flux
 interface in `2x2MCP-sim`.
 
-It supplements `generator/README.md`.  Where an older generator note conflicts
-with this document, **this document wins**.  In particular, the obsolete
+It supplements `generator/README.md`. Where an older generator note conflicts
+with this document, **this document wins**. In particular, the obsolete
 Pythia `+z -> EDepSim -x` mapping and direct replay of individual Pythia rows
 must not be used.
+
+The current kinematic sampler is **empirical donor + adaptive local jitter v3**.
+See `EMPIRICAL_RESAMPLING_V3.md` for the detailed rationale and algorithm.
 
 The frozen monoenergetic GPS tests under `gun_tests/` remain unchanged and are
 still the regression baseline for MCP transport, charge scaling, conversion,
@@ -27,6 +30,7 @@ generator/build_pythia_flux_model.py
         ├── flux_model.npz
         ├── provenance.json
         ├── component_normalization.csv
+        ├── input_summary_audit.csv
         └── plots/
                 │
                 ▼
@@ -45,8 +49,8 @@ custom EDepSim
 convert2h5 -> larnd-sim -> ndlar_flow
 ```
 
-Pythia supplies a finite production sample.  The builder turns that sample into
-a reusable, non-parametric flux model.  The sampler can then draw as many MCP
+Pythia supplies a finite production sample. The builder turns that sample into
+a reusable, non-parametric flux model. The sampler can then draw as many MCP
 kinematics as are useful for detector MC.
 
 Generating more throws from the model reduces detector-MC statistical
@@ -68,7 +72,7 @@ The builder supports two physically different stages.
 This is the default and is the recommended mode for the present detector study.
 
 It models the MCP spectrum **after the existing `2x2MCP-PythiaGen`
-`geometry_id=1` acceptance**.  This lets us use the high-statistics production
+`geometry_id=1` acceptance**. This lets us use the high-statistics production
 that stored accepted MCP spectra instead of forcing a low-statistics
 pre-acceptance spectrum run.
 
@@ -80,11 +84,10 @@ n_mcp_accepted
 
 for every emitter.
 
-The sampler does **not** apply a second acceptance rejection.  It computes the
-transformed detector intersection and records whether it is still consistent
-with the current approximate detector face, but this is a diagnostic only.
-
-This avoids conditioning the flux twice.
+The sampler does **not** apply a second physical acceptance rejection. It
+computes the transformed detector intersection and records whether it is still
+consistent with the current approximate detector face, but this is a diagnostic
+only.
 
 Use this mode for the first realistic EDepSim production.
 
@@ -100,9 +103,7 @@ This models the spectrum before detector acceptance and normalizes with:
 n_mcp_total
 ```
 
-It requires an all-MCP / pre-acceptance `mcp_spectra` production.  An
-accepted-only spectrum is rejected unless the user explicitly overrides the
-safety check.
+It requires an all-MCP / pre-acceptance `mcp_spectra` production.
 
 The sampler ordering is:
 
@@ -143,7 +144,7 @@ material interactions   false
 The source-to-detector path is therefore treated as straight free propagation.
 
 This is an intentional first approximation, not a claim that the real NuMI
-beamline is vacuum.  A future transport implementation can replace this layer
+beamline is vacuum. A future transport implementation can replace this layer
 without changing the Pythia flux-model or EDepSim interfaces.
 
 For an `accepted` model, `straight_line_v0` is also the assumption under which
@@ -170,7 +171,7 @@ J/psi
 
 when kinematically open for the chosen MCP mass.
 
-Each emitter keeps its own empirical energy/angular distribution.  The final
+Each emitter keeps its own empirical energy/angular distribution. The final
 model is a weighted mixture of those emitter-specific distributions.
 
 The relative normalization follows the same convention as
@@ -218,39 +219,75 @@ and can be reused across detector charge points.
 
 ---
 
-## 5. Kinematic model
+## 5. Kinematic model: empirical donor + adaptive local jitter v3
 
-The previous prototype modeled:
+Earlier prototypes used either `px/pz,py/pz` or a weighted 3-D histogram in
+`(log10(E), theta_x, theta_y)`. The latter looked much better in accepted-only
+phase space, but its uniform-within-cell interpolation still created two visible
+artifacts:
 
-```text
-t_x = px/pz
-t_y = py/pz
-```
+- broad first/last energy cells distorted the low- and high-energy tails;
+- a `theta_x` cell could straddle the gap between the two detector modules.
 
-Those variables diverge for small positive `pz` and caused very large,
-unphysical interpolation cells in the unrestricted smoke test.
+Version 3 therefore uses the **actual Pythia rows as local donors** instead of
+uniformly filling 3-D histogram cells.
 
-Version 2 instead models:
+For accepted-stage models the donor coordinates are:
 
 ```text
 log10(E / GeV)
-theta_x = atan2(px, pz)
-theta_y = atan2(py, pz)
+x_at_detector_m
+y_at_detector_m
 ```
 
-separately for every emitter.
+The original `theta_x = atan2(px,pz)` and `theta_y = atan2(py,pz)` are also
+stored for diagnostics.
 
-The model is a weighted 3-D histogram with weighted-quantile bin edges.  It is
-non-parametric: no Gaussian beam, polynomial spectrum, or analytic angular fit
-is imposed.
+A new throw is generated by:
 
-When sampling a histogram cell, the sampler draws uniformly inside that
-occupied cell.  Validation plots compare the original physically weighted
-Pythia sample with a large independently resampled model sample.
+1. choosing an emitter using its physical flux fraction;
+2. choosing a real donor row with its spectra-prescale weight;
+3. constructing nearest-neighbour midpoint intervals around that donor;
+4. applying a small random local jitter inside those intervals.
 
-The accepted model should be much better behaved than the first unrestricted
-smoke test because it only describes the narrow forward phase space that
-actually points at the 2x2.
+The default jitter scale is:
+
+```text
+--jitter-scale 0.5
+```
+
+with:
+
+```text
+0.0  exact weighted bootstrap
+0.5  half of the adaptive local cell (default)
+1.0  full nearest-neighbour midpoint cell
+```
+
+The model does not extrapolate below the minimum or above the maximum observed
+energy.
+
+For accepted models, left- and right-module donors are treated independently:
+
+```text
+left:  -0.65 <= x_at_detector <= -0.05 m
+right: +0.05 <= x_at_detector <= +0.65 m
+        -0.70 <= y_at_detector <= +0.70 m
+```
+
+This makes it structurally impossible for interpolation to fill the central
+module gap.
+
+The accepted detector-plane throw is converted back to a Pythia beam-frame
+direction using the same 1040 m convention:
+
+```text
+theta_x = atan2(x_at_detector, 1040 m)
+theta_y = atan2(y_at_detector, 1040 m)
+```
+
+For source-stage models, the same empirical-donor idea is used directly in
+`(logE, theta_x, theta_y)` without accepted-window conditioning.
 
 ---
 
@@ -273,7 +310,7 @@ which is about 3.34 degrees downward in `y`.
 The `x` and `y` signs in Pythia are the same as the 2x2 simulation signs.
 There is **no x/z permutation**.
 
-The sampler therefore applies only an `x`-axis rotation.  Its mandatory console
+The sampler therefore applies only an `x`-axis rotation. Its mandatory console
 cross-check is approximately:
 
 ```text
@@ -291,14 +328,14 @@ beam slope in y/z              -0.05836
 All are recorded in sampled-run provenance and can be overridden from the CLI.
 
 The old frozen gun direction `(-1,0,0)` was simply a convenient transverse
-validation trajectory.  It never defined the NuMI beam direction.
+validation trajectory. It never defined the NuMI beam direction.
 
 ---
 
 ## 7. Acceptance
 
 The current approximate Pythia `geometry_id=1` detector face is represented as
-beam-axis-relative offsets:
+beam-frame offsets:
 
 ```text
 x in [-0.65,-0.05] m  OR  [0.05,+0.65] m
@@ -306,26 +343,30 @@ y in [-0.70,+0.70] m
 ```
 
 For an **accepted-stage model**, this cut was already used to condition the
-Pythia training sample.  The sampler evaluates it only as a geometry diagnostic
-and reports:
+Pythia training sample. V3 constructs the local jitter cells separately inside
+the two accepted x windows, so resampling itself cannot cross the central gap.
+
+After the Pythia-to-2x2 rotation, the sampler independently evaluates the
+approximate detector face in detector/global coordinates and reports:
 
 ```text
 geometry_consistency_fraction
 ```
 
-A value close to 1 is expected.  A significant discrepancy means the
-interpolation, coordinate conversion, or assumed beam-axis reference needs to
-be investigated before EDepSim production.
+For accepted-stage models this second check is diagnostic only; it does not
+reject events a second time. See `GEOMETRY_AUDIT.md` for the distinction between
+the Pythia conditioning window and this post-rotation detector-global audit.
 
-For a **source-stage model**, the cut is applied after `straight_line_v0`
-transport and controls whether the source throw is written to EDepSim.
+For a **source-stage model**, the detector-global cut is applied after
+`straight_line_v0` transport and controls whether the source throw is written
+to EDepSim.
 
 ---
 
 ## 8. Flux-versus-mass cross-check
 
-Every build now derives normalization-only mass scans directly from the
-aggregate summary CSV.  These plots do not depend on the histogram model.
+Every build derives normalization-only mass scans directly from the aggregate
+summary CSV. These plots do not depend on the kinematic resampler.
 
 The builder writes under `plots/`:
 
@@ -342,21 +383,24 @@ The figure contains:
 
 Source and accepted fluxes are decomposed by emitter and include a total curve.
 
-This is deliberately close to the existing Pythia normalized-yield plot.  The
-new accepted-flux curve should have the same physics shape after stripping the
-chosen `N_POT * epsilon^2` factor.
+The same calculation is also available without rebuilding a selected-mass model:
 
-This is one of the strongest normalization cross-checks for the new workflow.
+```bash
+python generator/plot_flux_vs_mass.py aggregate_summary.csv \
+    --geometry-id 1 \
+    --output-dir out/flux_mass_scan
+```
 
 ---
 
 ## 9. Model-building plots
 
-A successful build writes:
+A successful v3 build writes:
 
 ```text
 plots/flux_model_overview.png
 plots/flux_model_resampling_validation.png
+plots/flux_model_projection_validation.png
 plots/pythia_detector_projection.png
 plots/flux_vs_mass.png
 plots/flux_vs_mass.csv
@@ -375,33 +419,29 @@ E vs theta_x
 E vs theta_y
 ```
 
-Energy uses logarithmic x and y where appropriate.  Angular axes are shown in
-mrad and 1-D flux uses logarithmic y.
+Energy uses logarithmic axes where appropriate. Angular axes are shown in mrad.
 
 ### `flux_model_resampling_validation.png`
 
-Compares:
+Compares physically weighted original Pythia with independent empirical-v3
+throws in energy and angular projections. The central `theta_x` gap must remain
+empty and the low/high-energy tails should track the original sample without the
+broad-cell artifacts seen in v2.
 
-```text
-physically weighted original Pythia
-vs
-independent throws from flux_model.npz
-```
+### `flux_model_projection_validation.png`
 
-in both 1-D and 2-D projections.
-
-Do not approve a flux model based only on 1-D agreement.  The first unrestricted
-smoke test taught us that 2-D angular plots can reveal interpolation artifacts
-hidden by excellent-looking marginal distributions.
+For accepted models, directly compares original and resampled
+`x_at_detector_m,y_at_detector_m`. This is the most direct test that local jitter
+preserves the two-module conditioning domain.
 
 ### `pythia_detector_projection.png`
 
-Shows the detector-plane `x_at_detector_m,y_at_detector_m` values stored in the
-training Pythia sample with the approximate geometry boxes overlaid.
+Shows the original detector-plane values stored in the Pythia training sample
+with the approximate geometry boxes overlaid.
 
 ---
 
-## 10. Provenance
+## 10. Provenance and combined-production audit
 
 Every source ROOT file used to construct a model is recorded with:
 
@@ -415,40 +455,58 @@ SHA-256
 
 The aggregate summary CSV gets the same treatment.
 
-`provenance.json` also stores:
+Input directories are searched recursively. Therefore combined productions such
+as:
 
 ```text
-flux stage
-selected MCP mass
-geometry ID
-production tag
-optional PythiaGen git SHA
-2x2MCP-sim git SHA
-normalization convention
-SoftQCD/charmonium cross-section normalization
-emitter fluxes and mixture fractions
-kinematic coordinates
-histogram definition
-straight_line_v0 transport assumptions
+raw_combined_v2/
+  base_4h/
+  endpoint_v1/
+  global_v2/
 ```
 
-The NPZ contains a copy of the same metadata so the model remains self
-describing if moved away from its original directory.
+can be passed directly to the builder.
+
+Folder names do **not** determine physics weights. Each file contributes matching
+`mcp_spectra` rows and its own file-local `spectra_prescale`; the absolute
+normalization comes from the supplied aggregate summary CSV.
+
+V3 adds a strict consistency audit. For every selected
+`(mass, emitter, production_mode, geometry_id)` key, it independently sums from
+the input ROOT `mcp_summary` trees:
+
+```text
+n_events_generated
+n_mcp_total
+n_mcp_accepted
+```
+
+and requires those totals to match the aggregate summary. A mismatch stops the
+build by default. The result is written to:
+
+```text
+input_summary_audit.csv
+```
+
+and embedded in `provenance.json`.
+
+Provenance also reports best-effort used-file counts by run-group folder such as
+`base_4h`, `endpoint_v1`, and `global_v2`.
+
+This audit proves that the ROOT directory and aggregate summary describe the
+same combined production. It does not decide whether differently named
+production campaigns *should* be combined physically; that is a production-side
+decision encoded by the aggregate summary itself.
 
 ---
 
 ## 11. Recommended first build
 
-Use a mass **strictly greater than 10 MeV** for the first EDepSim sample.  The
+Use a mass **strictly greater than 10 MeV** for the first EDepSim sample. The
 current custom EDepSim MCP uses `G4hIonisation` and deliberately rejects masses
 at or below 10 MeV.
 
-The earlier smoke command selected exactly `0.010 GeV`, despite writing into a
-directory named `mcp_020MeV`; do not reuse that directory name for a 10 MeV
-sample.
-
-If the normal high-statistics accepted production contains the nearby
-`0.020458 GeV` point, a recommended command is:
+For the combined high-statistics production and the 20.458 MeV point:
 
 ```bash
 cd /pscratch/sd/b/bgelli/2x2_mcp
@@ -457,25 +515,24 @@ git switch feature/pythia-spectrum-input
 git pull
 
 python generator/build_pythia_flux_model.py \
-    /path/to/high_statistics_accepted_spectra/ \
-    --summary /path/to/matching_aggregate_summary.csv \
+    /global/homes/b/bgelli/2x2MCP-PythiaGen/outputs/raw_combined_v2/ \
+    --summary /global/homes/b/bgelli/2x2MCP-PythiaGen/outputs/aggregate_summary_combined_v2.csv \
     --mass-gev 0.020458 \
     --geometry-id 1 \
     --flux-stage accepted \
-    --output-dir out/flux_models/mcp_020458GeV_accepted \
-    --production-tag accepted_flux_smoke_test
+    --output-dir out/flux_models/mcp_020458GeV_accepted_v3 \
+    --production-tag accepted_flux_empirical_v3
 ```
-
-`--flux-stage accepted` is currently the default, so it may be omitted, but it
-is useful to keep it explicit in production commands.
 
 Before sampling, inspect:
 
 ```text
+input_summary_audit.csv
 component_normalization.csv
 provenance.json
 plots/flux_model_overview.png
 plots/flux_model_resampling_validation.png
+plots/flux_model_projection_validation.png
 plots/pythia_detector_projection.png
 plots/flux_vs_mass.png
 ```
@@ -488,15 +545,16 @@ After approving the model:
 
 ```bash
 python generator/sample_pythia_flux.py \
-    out/flux_models/mcp_020458GeV_accepted/flux_model.npz \
+    out/flux_models/mcp_020458GeV_accepted_v3/flux_model.npz \
     out/generator/mcp_020458GeV_seed12345 \
     --n-events 100 \
-    --seed 12345
+    --seed 12345 \
+    --jitter-scale 0.5
 ```
 
-For accepted-stage models, `--n-accepted 100` is retained as a convenient alias,
-but `--n-events` better describes what is happening: all model draws are already
-conditioned on Pythia acceptance.
+`--jitter-scale 0` produces an exact weighted bootstrap and is useful as a
+control. `--jitter-scale 1` uses the full adaptive midpoint cells while still
+respecting empirical support and the accepted module boundaries.
 
 The sampler writes:
 
@@ -508,10 +566,8 @@ The sampler writes:
 *.sampled_flux.png
 ```
 
-The console prints the coordinate cross-check and the geometry-consistency
-fraction.
-
-A low geometry-consistency fraction is a stop condition for the first test.
+The console prints the coordinate cross-check and the detector-global
+geometry-consistency fraction.
 
 ---
 
@@ -596,7 +652,7 @@ and keeps zero-hit events:
 /edep/db/set/requireEventsWithHits false
 ```
 
-For a 20.458 MeV model, for example:
+For a 20.458 MeV model:
 
 ```bash
 export EDEPSIM_MCP_MASS_MEV=20.458
@@ -626,11 +682,9 @@ The present workflow intentionally does **not** yet include:
 The first five are collectively the future replacement for
 `straight_line_v0`.
 
-The Pythia source contains chi and chibar, but current EDepSim defines one custom
-PDG `9000001` with a run-wide charge.  The sampler randomly preserves a source
-chi/chibar sign in its manifest while transporting both with EDepSim PDG
-`9000001`.  This is sufficient for the current ionization-focused,
-no-magnetic-field detector response.
+Rare emitter components can have few accepted donor rows. V3 therefore uses
+conservative no-extrapolation local jitter; their small donor statistics remain
+a source-model limitation even if many detector throws are generated.
 
 ---
 
@@ -643,6 +697,7 @@ model.
 accepted stage
     high-statistics detector work now
     Pythia acceptance already applied
+    empirical donor model preserves accepted geometry
     straight_line_v0 assumption
 
 source stage
